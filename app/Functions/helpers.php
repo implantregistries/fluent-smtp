@@ -859,17 +859,32 @@ if (!function_exists('fluentMailGetSettings')) {
                         continue;
                     }
 
-                    if (isset($connection['provider_settings']['disable_encryption']) && $connection['provider_settings']['disable_encryption'] === 'yes') {
-                        continue;
+                    $encryptionDisabled = isset($connection['provider_settings']['disable_encryption'])
+                        && $connection['provider_settings']['disable_encryption'] === 'yes';
+
+                    if (!$encryptionDisabled) {
+                        $secretFieldKeys = (array)$providerKeyMaps[$providerKey];
+
+                        foreach ($secretFieldKeys as $secretFieldKey) {
+                            if (empty($connection['provider_settings'][$secretFieldKey])) {
+                                continue;
+                            }
+
+                            $settings['connections'][$key]['provider_settings'][$secretFieldKey] = fluentMailEncryptDecrypt($connection['provider_settings'][$secretFieldKey], 'd');
+                        }
                     }
 
-                    $secretFieldKey = $providerKeyMaps[$providerKey];
-
-                    if (empty($connection['provider_settings'][$secretFieldKey])) {
-                        continue;
+                    if ($providerKey === 'outlook'
+                        && \FluentMail\Includes\Support\Arr::get($connection, 'provider_settings.outlook_tokens_encrypted') === 'yes') {
+                        foreach (['access_token', 'refresh_token'] as $tokenField) {
+                            if (!empty($connection['provider_settings'][$tokenField])) {
+                                $settings['connections'][$key]['provider_settings'][$tokenField] = fluentMailEncryptDecrypt(
+                                    $connection['provider_settings'][$tokenField],
+                                    'd'
+                                );
+                            }
+                        }
                     }
-
-                    $settings['connections'][$key]['provider_settings'][$secretFieldKey] = fluentMailEncryptDecrypt($connection['provider_settings'][$secretFieldKey], 'd');
                 }
             }
         }
@@ -944,19 +959,40 @@ if (!function_exists('fluentMailSetSettings')) {
                     if (empty($providerKeyMaps[$providerKey])) {
                         continue;
                     }
-                    if (\FluentMail\Includes\Support\Arr::get($connection, 'provider_settings.disable_encryption') === 'yes') {
-                        continue;
+                    $encryptionDisabled = \FluentMail\Includes\Support\Arr::get(
+                        $connection,
+                        'provider_settings.disable_encryption'
+                    ) === 'yes';
+
+                    if (!$encryptionDisabled) {
+                        $secretFieldKeys = (array)$providerKeyMaps[$providerKey];
+
+                        foreach ($secretFieldKeys as $secretFieldKey) {
+                            if (empty($connection['provider_settings'][$secretFieldKey])) {
+                                continue;
+                            }
+
+                            $hasSecretField = true;
+
+                            $settings['connections'][$key]['provider_settings'][$secretFieldKey] = fluentMailEncryptDecrypt($connection['provider_settings'][$secretFieldKey], 'e');
+                        }
                     }
 
-                    $secretFieldKey = $providerKeyMaps[$providerKey];
+                    if ($providerKey === 'outlook') {
+                        foreach (['access_token', 'refresh_token'] as $tokenField) {
+                            if (empty($connection['provider_settings'][$tokenField])) {
+                                continue;
+                            }
 
-                    if (empty($connection['provider_settings'][$secretFieldKey])) {
-                        continue;
+                            $hasSecretField = true;
+                            $settings['connections'][$key]['provider_settings'][$tokenField] = fluentMailEncryptDecrypt(
+                                $connection['provider_settings'][$tokenField],
+                                'e'
+                            );
+                        }
+
+                        $settings['connections'][$key]['provider_settings']['outlook_tokens_encrypted'] = 'yes';
                     }
-
-                    $hasSecretField = true;
-
-                    $settings['connections'][$key]['provider_settings'][$secretFieldKey] = fluentMailEncryptDecrypt($connection['provider_settings'][$secretFieldKey], 'e');
                 }
             }
         }

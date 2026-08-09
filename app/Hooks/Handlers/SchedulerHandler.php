@@ -318,7 +318,10 @@ class SchedulerHandler
                 continue;
             }
 
-            if (empty($providerSettings['refresh_token'])) {
+            $authMode = \FluentMail\App\Services\Mailer\Providers\Outlook\Handler::getAuthMode($providerSettings);
+
+            if ($authMode !== \FluentMail\App\Services\Mailer\Providers\Outlook\Handler::AUTH_APP_ONLY
+                && empty($providerSettings['refresh_token'])) {
                 continue;
             }
 

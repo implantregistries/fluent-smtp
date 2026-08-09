@@ -80,6 +80,29 @@ which regenerates `app/Services/TransStrings.php`. Only literal strings passed
 to `$t('...')` are extracted, so a `$t(someVariable)` call will render
 untranslated and the extractor will warn about it.
 
+#### Microsoft Graph authentication modes
+
+The Outlook / Office 365 provider supports delegated user authorization and
+application credentials (app-only). Connections created before the selector was
+added continue in delegated mode and retain the existing callback, refresh-token,
+and `/me/sendMail` behavior.
+
+App-only connections are for organizational Microsoft 365 tenants. They use a
+tenant-specific client-credentials token endpoint with the Microsoft Graph
+`/.default` scope and send MIME mail through `/users/{sender}/sendMail`; no
+interactive callback or refresh token is involved. The client-secret field
+expects the secret **value**, not its credential ID.
+
+Application `Mail.Send` access can authorize sending as any mailbox unless it is
+restricted externally. Use [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac), remove conflicting unscoped grants, and test both an allowed and denied mailbox. FluentSMTP selects the configured connection and sender but does not itself constrain Microsoft tenant permissions.
+
+For protected configuration-file storage, define the existing
+`FLUENTMAIL_OUTLOOK_CLIENT_ID` and `FLUENTMAIL_OUTLOOK_CLIENT_SECRET` constants,
+plus `FLUENTMAIL_OUTLOOK_TENANT_ID` and
+`FLUENTMAIL_OUTLOOK_AUTH_MODE` (`app_only`). Define them before plugins load and
+keep the configuration outside the web root and version control. Microsoft
+documents the [client credentials flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow) and the [Graph sendMail MIME request](https://learn.microsoft.com/en-us/graph/api/user-sendmail?view=graph-rest-1.0).
+
 #### Running the tests
 
 The suite runs locally through WP-CLI against a real development WordPress
@@ -110,4 +133,3 @@ optional coverage gate, the environment-axes runner, and prefix portability.
 This builds the frontend, installs Composer dependencies without dev packages,
 produces `fluent-smtp.zip`, restores your dev dependencies, and then verifies
 that no development files ended up in the archive.
-

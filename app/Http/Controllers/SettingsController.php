@@ -87,6 +87,13 @@ class SettingsController extends Controller
                 }
             }
 
+            $existingConnection = Arr::get(
+                $settings->getConnections(),
+                Arr::get($data, 'connection_key') . '.provider_settings',
+                []
+            );
+            $connection = $provider->prepareConnectionForSave($connection, $existingConnection);
+
             $data['connection'] = $connection;
 
             $this->validateConnection($provider, $connection);
@@ -654,6 +661,21 @@ class SettingsController extends Controller
     {
         $this->verify();
         $connection = wp_unslash($request->get('connection'));
+
+        $outlookAuthMode = \FluentMail\App\Services\Mailer\Providers\Outlook\Handler::getAuthMode($connection);
+        if (Arr::get($connection, 'key_store') === 'wp_config'
+            && defined('FLUENTMAIL_OUTLOOK_AUTH_MODE') && FLUENTMAIL_OUTLOOK_AUTH_MODE) {
+            $outlookAuthMode = FLUENTMAIL_OUTLOOK_AUTH_MODE;
+        }
+
+        if ($outlookAuthMode
+            === \FluentMail\App\Services\Mailer\Providers\Outlook\Handler::AUTH_APP_ONLY) {
+            return $this->sendError([
+                'auth_mode' => [
+                    'invalid' => __('Application credentials do not use an interactive Microsoft authorization URL.', 'fluent-smtp')
+                ]
+            ], 422);
+        }
 
         $clientId = Arr::get($connection, 'client_id');
         $clientSecret = Arr::get($connection, 'client_secret');

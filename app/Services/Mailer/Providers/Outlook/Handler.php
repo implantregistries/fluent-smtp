@@ -8,6 +8,8 @@ use FluentMail\App\Services\Mailer\BaseHandler;
 
 class Handler extends BaseHandler
 {
+    const AUTH_DELEGATED = 'delegated';
+    const AUTH_APP_ONLY = 'app_only';
 
     public function send()
     {
@@ -52,9 +54,55 @@ class Handler extends BaseHandler
         if (Arr::get($settings, 'key_store') == 'wp_config') {
             $settings['client_id'] = defined('FLUENTMAIL_OUTLOOK_CLIENT_ID') ? FLUENTMAIL_OUTLOOK_CLIENT_ID : '';
             $settings['client_secret'] = defined('FLUENTMAIL_OUTLOOK_CLIENT_SECRET') ? FLUENTMAIL_OUTLOOK_CLIENT_SECRET : '';
+            $settings['tenant_id'] = defined('FLUENTMAIL_OUTLOOK_TENANT_ID') ? FLUENTMAIL_OUTLOOK_TENANT_ID : '';
+
+            if (defined('FLUENTMAIL_OUTLOOK_AUTH_MODE') && FLUENTMAIL_OUTLOOK_AUTH_MODE) {
+                $settings['auth_mode'] = FLUENTMAIL_OUTLOOK_AUTH_MODE;
+            }
         }
 
+        $settings['auth_mode'] = self::getAuthMode($settings);
+
         return $settings;
+    }
+
+    public static function getAuthMode($settings)
+    {
+        return Arr::get($settings, 'auth_mode') === self::AUTH_APP_ONLY
+            ? self::AUTH_APP_ONLY
+            : self::AUTH_DELEGATED;
+    }
+
+    public function prepareConnectionForSave($connection, $existingConnection = [])
+    {
+        $mode = Arr::get($connection, 'auth_mode', self::AUTH_DELEGATED);
+        if (Arr::get($connection, 'key_store') === 'wp_config'
+            && defined('FLUENTMAIL_OUTLOOK_AUTH_MODE') && FLUENTMAIL_OUTLOOK_AUTH_MODE) {
+            $mode = FLUENTMAIL_OUTLOOK_AUTH_MODE;
+        }
+        $existingMode = self::getAuthMode($existingConnection);
+
+        if ($existingConnection && $mode !== $existingMode) {
+            foreach (['auth_token', 'access_token', 'refresh_token', 'expire_stamp', 'expires_in'] as $field) {
+                unset($connection[$field]);
+            }
+        }
+
+        if ($mode === self::AUTH_APP_ONLY) {
+            unset($connection['auth_token'], $connection['refresh_token']);
+        } else {
+            unset($connection['tenant_id']);
+        }
+
+        if (Arr::get($connection, 'key_store') === 'wp_config') {
+            $connection['client_id'] = '';
+            $connection['client_secret'] = '';
+            $connection['tenant_id'] = '';
+        }
+
+        $connection['auth_mode'] = $mode;
+
+        return $connection;
     }
 
     /**
@@ -88,7 +136,10 @@ class Handler extends BaseHandler
 
         $api = (new API($data['client_id'], $data['client_secret']));
 
-        $result = $api->sendMime($mime, $accessToken);
+        $sender = self::getAuthMode($data) === self::AUTH_APP_ONLY
+            ? Arr::get($data, 'sender_email')
+            : '';
+        $result = $api->sendMime($mime, $accessToken, $sender);
 
         if(is_wp_error($result)) {
             $errorMessage = $result->get_error_message();
@@ -105,7 +156,16 @@ class Handler extends BaseHandler
     {
         $errors = [];
 
-        $keyStoreType = $connection['key_store'];
+        $submittedAuthMode = Arr::get($connection, 'auth_mode', self::AUTH_DELEGATED);
+        if (!in_array($submittedAuthMode, [self::AUTH_DELEGATED, self::AUTH_APP_ONLY], true)) {
+            $errors['auth_mode']['invalid'] = __('Please select a valid Microsoft authentication mode.', 'fluent-smtp');
+            $this->throwValidationException($errors);
+        }
+
+        $connection = self::withResolvedKeys($connection);
+        $authMode = self::getAuthMode($connection);
+
+        $keyStoreType = Arr::get($connection, 'key_store', 'db');
 
         $clientId = Arr::get($connection, 'client_id');
         $clientSecret = Arr::get($connection, 'client_secret');
@@ -134,6 +194,65 @@ class Handler extends BaseHandler
 
         if ($errors) {
             $this->throwValidationException($errors);
+        }
+
+        if ($authMode === self::AUTH_APP_ONLY) {
+            $tenantId = Arr::get($connection, 'tenant_id');
+
+            if (!$this->isUuid($tenantId)) {
+                $errors['tenant_id']['invalid'] = __('Please provide a valid Microsoft directory (tenant) ID.', 'fluent-smtp');
+            }
+
+            if (!$this->isUuid($clientId)) {
+                $errors['client_id']['invalid'] = __('Please provide a valid Microsoft application (client) ID.', 'fluent-smtp');
+            }
+
+            if (!is_email(Arr::get($connection, 'sender_email'))) {
+                $errors['sender_email']['invalid'] = __('Please provide a valid organizational sender mailbox.', 'fluent-smtp');
+            }
+
+            if ($errors) {
+                $this->throwValidationException($errors);
+            }
+
+            $accessToken = Arr::get($connection, 'access_token');
+            $expireStamp = (int)Arr::get($connection, 'expire_stamp');
+
+            if (!$accessToken || ($expireStamp - 300) < time()) {
+                $tokens = (new API($clientId, $clientSecret))->requestAppToken($tenantId);
+
+                if (is_wp_error($tokens)) {
+                    $errors['client_secret']['invalid'] = sprintf(
+                        /* translators: %s: sanitized error returned by Microsoft */
+                        __('Microsoft rejected the application credentials: %s', 'fluent-smtp'),
+                        $tokens->get_error_message()
+                    );
+                } else {
+                    add_filter('fluentmail_saving_connection_data', function ($con, $provider) use ($connection, $tokens) {
+                        if ($provider !== 'outlook') {
+                            return $con;
+                        }
+
+                        if (Arr::get($con, 'connection.sender_email') !== Arr::get($connection, 'sender_email')) {
+                            return $con;
+                        }
+
+                        $con['connection']['auth_mode'] = self::AUTH_APP_ONLY;
+                        $con['connection']['access_token'] = $tokens['access_token'];
+                        $con['connection']['expire_stamp'] = time() + $tokens['expires_in'];
+                        $con['connection']['expires_in'] = $tokens['expires_in'];
+                        unset($con['connection']['auth_token'], $con['connection']['refresh_token']);
+
+                        return $con;
+                    }, 10, 2);
+                }
+            }
+
+            if ($errors) {
+                $this->throwValidationException($errors);
+            }
+
+            return;
         }
 
         $accessToken = Arr::get($connection, 'access_token');
@@ -181,6 +300,8 @@ class Handler extends BaseHandler
 
         $existingData['access_token'] = $tokens['access_token'];
 
+        $authMode = self::getAuthMode($existingData);
+
         /*
          * A refresh response does not have to carry a new refresh token. When
          * it does not, the one we already hold stays valid - so it is kept
@@ -190,13 +311,21 @@ class Handler extends BaseHandler
          * eventually trips the identity server's throttling, and the
          * connection looks dead for reasons nothing reports.
          */
-        if (!empty($tokens['refresh_token'])) {
+        if ($authMode === self::AUTH_APP_ONLY) {
+            unset($existingData['auth_token'], $existingData['refresh_token']);
+        } elseif (!empty($tokens['refresh_token'])) {
             $existingData['refresh_token'] = $tokens['refresh_token'];
         }
 
         $expiresIn = !empty($tokens['expires_in']) ? (int)$tokens['expires_in'] : 3600;
         $existingData['expire_stamp'] = $expiresIn + time();
         $existingData['expires_in'] = $expiresIn;
+
+        if (Arr::get($existingData, 'key_store') === 'wp_config') {
+            $existingData['client_id'] = '';
+            $existingData['client_secret'] = '';
+            $existingData['tenant_id'] = '';
+        }
 
         (new Settings())->updateConnection($senderEmail, $existingData);
 
@@ -212,6 +341,8 @@ class Handler extends BaseHandler
 
     private function getAccessToken($config, $force = false)
     {
+        $config = self::withResolvedKeys($config);
+        $authMode = self::getAuthMode($config);
         $accessToken = Arr::get($config, 'access_token');
         $expireStamp = (int)Arr::get($config, 'expire_stamp');
 
@@ -219,9 +350,13 @@ class Handler extends BaseHandler
         if ($force || ($expireStamp - 300) < time()) {
             $fluentAPi = (new API($config['client_id'], $config['client_secret']));
 
-            $tokens = $fluentAPi->sendTokenRequest('refresh_token', [
-                'refresh_token' => Arr::get($config, 'refresh_token')
-            ]);
+            if ($authMode === self::AUTH_APP_ONLY) {
+                $tokens = $fluentAPi->requestAppToken(Arr::get($config, 'tenant_id'));
+            } else {
+                $tokens = $fluentAPi->sendTokenRequest('refresh_token', [
+                    'refresh_token' => Arr::get($config, 'refresh_token')
+                ]);
+            }
 
             /*
              * This used to return false, and the caller then handed `false` to
@@ -231,23 +366,43 @@ class Handler extends BaseHandler
              * never reached the log or the admin.
              */
             if (is_wp_error($tokens)) {
-                throw new \Exception(
-                    sprintf(
-                    /* translators: %s: error message returned by Microsoft */
-                        __('Could not renew the Microsoft access token: %s. Please reconnect this Outlook connection in FluentSMTP settings.', 'fluent-smtp'),
-                        $tokens->get_error_message()
-                    )
-                );
+                $recovery = $authMode === self::AUTH_APP_ONLY
+                    ? __('Please verify the tenant, application credentials, and Microsoft authorization.', 'fluent-smtp')
+                    : __('Please reconnect this Outlook connection in FluentSMTP settings.', 'fluent-smtp');
+
+                throw new \Exception(sprintf(
+                    /* translators: 1: sanitized Microsoft error, 2: recovery guidance */
+                    __('Could not renew the Microsoft access token: %1$s. %2$s', 'fluent-smtp'),
+                    $tokens->get_error_message(),
+                    $recovery
+                ));
             }
 
             $this->saveNewTokens($config, $tokens);
 
             $accessToken = Arr::get($tokens, 'access_token');
+            $this->settings['access_token'] = $accessToken;
+            $this->settings['expires_in'] = !empty($tokens['expires_in']) ? (int)$tokens['expires_in'] : 3600;
+            $this->settings['expire_stamp'] = time() + $this->settings['expires_in'];
+
+            if ($authMode === self::AUTH_APP_ONLY) {
+                unset($this->settings['auth_token'], $this->settings['refresh_token']);
+            } elseif (!empty($tokens['refresh_token'])) {
+                $this->settings['refresh_token'] = $tokens['refresh_token'];
+            }
         }
 
         if (empty($accessToken)) {
+            $recovery = $authMode === self::AUTH_APP_ONLY
+                ? __('Please verify the application credentials in FluentSMTP settings.', 'fluent-smtp')
+                : __('Please reconnect this Outlook connection in FluentSMTP settings.', 'fluent-smtp');
+
             throw new \Exception(
-                __('No usable Microsoft access token is available for this connection. Please reconnect this Outlook connection in FluentSMTP settings.', 'fluent-smtp')
+                sprintf(
+                    /* translators: %s: recovery guidance */
+                    __('No usable Microsoft access token is available for this connection. %s', 'fluent-smtp'),
+                    $recovery
+                )
             );
         }
 
@@ -289,5 +444,13 @@ class Handler extends BaseHandler
                 'connection' => $connection
             ])
         ];
+    }
+
+    private function isUuid($value)
+    {
+        return is_string($value) && (bool)preg_match(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+            $value
+        );
     }
 }

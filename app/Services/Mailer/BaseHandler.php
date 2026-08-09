@@ -598,6 +598,19 @@ class BaseHandler
         return true;
     }
 
+    /**
+     * Give a provider a chance to remove authentication state that is unsafe
+     * or incompatible with the connection being saved.
+     *
+     * @param array $connection
+     * @param array $existingConnection
+     * @return array
+     */
+    public function prepareConnectionForSave($connection, $existingConnection = [])
+    {
+        return $connection;
+    }
+
     public function getConnectionInfo($connection)
     {
         return [
