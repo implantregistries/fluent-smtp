@@ -49,12 +49,12 @@ return function () {
         );
         FsmtpTest::assertSame(
             OutlookHandler::AUTH_DELEGATED,
-            $providers['outlook']['options']['auth_mode'],
+            $providers['providers']['outlook']['options']['auth_mode'],
             'new Outlook connection authentication mode'
         );
-        FsmtpTest::assertSame('db', $providers['outlook']['options']['key_store'], 'new Outlook key store');
-        FsmtpTest::assert(!isset($providers['gmail']['options']['auth_mode']), 'Outlook auth mode leaked into Gmail defaults');
-        FsmtpTest::assert(!isset($providers['gmail']['options']['tenant_id']), 'Outlook tenant ID leaked into Gmail defaults');
+        FsmtpTest::assertSame('db', $providers['providers']['outlook']['options']['key_store'], 'new Outlook key store');
+        FsmtpTest::assert(!isset($providers['providers']['gmail']['options']['auth_mode']), 'Outlook auth mode leaked into Gmail defaults');
+        FsmtpTest::assert(!isset($providers['providers']['gmail']['options']['tenant_id']), 'Outlook tenant ID leaked into Gmail defaults');
     });
 
     FsmtpTest::case('Outlook mode transitions discard incompatible token state', function () use ($validSettings) {
