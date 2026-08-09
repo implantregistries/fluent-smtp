@@ -74,6 +74,24 @@ return function () {
         $afterRemainder = $after;
         Arr::forget($beforeRemainder, $path);
         Arr::forget($afterRemainder, $path);
+
+        // Each encrypted settings write intentionally creates a fresh random
+        // ciphertext marker. Prove both markers are valid, then compare the
+        // deterministic settings graph rather than their nonces.
+        if (!empty($beforeRemainder['test']) && !empty($afterRemainder['test'])) {
+            FsmtpTest::assertSame(
+                'test',
+                fluentMailEncryptDecrypt($beforeRemainder['test'], 'd'),
+                $label . ' original encryption marker'
+            );
+            FsmtpTest::assertSame(
+                'test',
+                fluentMailEncryptDecrypt($afterRemainder['test'], 'd'),
+                $label . ' renewed encryption marker'
+            );
+            unset($beforeRemainder['test'], $afterRemainder['test']);
+        }
+
         FsmtpTest::assertSame(
             $beforeRemainder,
             $afterRemainder,
