@@ -208,6 +208,7 @@ class TransStrings
             'Marketing' => __('Marketing', 'fluent-smtp'),
             'Meet ' => __('Meet ', 'fluent-smtp'),
             'Message Stream' => __('Message Stream', 'fluent-smtp'),
+            'Microsoft Graph uses the Exchange mailbox display name for delivered app-only messages and may replace the From Name configured above. Set the mailbox display name in Microsoft 365 when a specific delivered name is required.' => __('Microsoft Graph uses the Exchange mailbox display name for delivered app-only messages and may replace the From Name configured above. Set the mailbox display name in Microsoft 365 when a specific delivered name is required.', 'fluent-smtp'),
             'Microsoft authentication mode' => __('Microsoft authentication mode', 'fluent-smtp'),
             'Monday' => __('Monday', 'fluent-smtp'),
             'More' => __('More', 'fluent-smtp'),

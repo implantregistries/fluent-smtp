@@ -11,6 +11,9 @@
             <p v-if="connection.auth_mode === 'app_only'">
                 {{ $t('Create and authorize the Microsoft application in Microsoft 365, then enter its credentials below. Exchange Online Application RBAC is recommended to scope mailbox access; this connector does not restrict tenant permissions.') }}
             </p>
+            <p v-if="connection.auth_mode === 'app_only'">
+                {{ $t('Microsoft Graph uses the Exchange mailbox display name for delivered app-only messages and may replace the From Name configured above. Set the mailbox display name in Microsoft 365 when a specific delivered name is required.') }}
+            </p>
         </el-form-item>
         <el-radio-group size="mini" v-model="connection.key_store">
             <el-radio-button value="db" label="db">{{ $t('Store application credentials in FluentSMTP (encrypted)') }}</el-radio-button>

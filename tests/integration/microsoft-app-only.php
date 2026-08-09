@@ -189,6 +189,40 @@ return function () {
         FsmtpTest::assertSame('text/plain', $requests[1]['args']['headers']['Content-Type'], 'MIME content type');
     });
 
+    FsmtpTest::case('App-only MIME contains the configured forced sender name before Graph submission', function () use ($validSettings) {
+        if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
+            require_once ABSPATH . WPINC . '/PHPMailer/Exception.php';
+            require_once ABSPATH . WPINC . '/PHPMailer/PHPMailer.php';
+            require_once ABSPATH . WPINC . '/PHPMailer/SMTP.php';
+        }
+
+        $sender = 'sender@example.test';
+        $phpMailer = new \PHPMailer\PHPMailer\PHPMailer(true);
+        $phpMailer->CharSet = 'UTF-8';
+        $phpMailer->setFrom($sender, 'Suite Mailbox Profile');
+        $phpMailer->addAddress('recipient@example.test');
+        $phpMailer->Subject = 'Suite forced sender name';
+        $phpMailer->Body = 'Suite message body';
+
+        $handler = new OutlookHandler();
+        $handler->setSettings(array_merge($validSettings($sender), [
+            'sender_name' => 'Suite Application Sender',
+            'force_from_name' => 'yes',
+        ]));
+        $handler->setPhpMailer($phpMailer);
+
+        $preSend = new ReflectionMethod(OutlookHandler::class, 'preSend');
+        $preSend->setAccessible(true);
+        $preSend->invoke($handler);
+        $phpMailer->preSend();
+        $mime = $phpMailer->getSentMIMEMessage();
+
+        FsmtpTest::assert(
+            preg_match('/^From: Suite Application Sender <sender@example\\.test>\\r?$/m', $mime) === 1,
+            'configured forced sender name missing from outbound MIME'
+        );
+    });
+
     FsmtpTest::case('Graph errors are sanitized without hiding Microsoft diagnostics', function () {
         $secret = 'obviously-fake-suite-secret';
         $token = 'obviously-fake-app-token';

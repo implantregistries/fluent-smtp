@@ -98,6 +98,11 @@ tenant-specific client-credentials token endpoint with the Microsoft Graph
 interactive callback or refresh token is involved. The client-secret field
 expects the secret **value**, not its credential ID.
 
+Microsoft Graph resolves the delivered sender display name from the Exchange
+mailbox profile and can replace the `From Name` submitted in MIME. Configure the
+mailbox display name in Microsoft 365 when a specific delivered name is required;
+FluentSMTP's `Force Sender Name` cannot override this Graph behavior.
+
 Application `Mail.Send` access can authorize sending as any mailbox unless it is
 restricted externally. Use [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac), remove conflicting unscoped grants, and test both an allowed and denied mailbox. FluentSMTP selects the configured connection and sender but does not itself constrain Microsoft tenant permissions.
 
