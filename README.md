@@ -87,6 +87,11 @@ application credentials (app-only). Connections created before the selector was
 added continue in delegated mode and retain the existing callback, refresh-token,
 and `/me/sendMail` behavior.
 
+App-only connections can be configured completely in FluentSMTP's Outlook
+connection form. The default storage option saves the client-secret value using
+FluentSMTP's existing encrypted settings workflow; no configuration file is
+required.
+
 App-only connections are for organizational Microsoft 365 tenants. They use a
 tenant-specific client-credentials token endpoint with the Microsoft Graph
 `/.default` scope and send MIME mail through `/users/{sender}/sendMail`; no
@@ -96,7 +101,9 @@ expects the secret **value**, not its credential ID.
 Application `Mail.Send` access can authorize sending as any mailbox unless it is
 restricted externally. Use [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac), remove conflicting unscoped grants, and test both an allowed and denied mailbox. FluentSMTP selects the configured connection and sender but does not itself constrain Microsoft tenant permissions.
 
-For protected configuration-file storage, define the existing
+As an optional alternative to UI-managed storage, protected configuration-file
+storage remains available through the provider's existing key-storage selector.
+Define the existing
 `FLUENTMAIL_OUTLOOK_CLIENT_ID` and `FLUENTMAIL_OUTLOOK_CLIENT_SECRET` constants,
 plus `FLUENTMAIL_OUTLOOK_TENANT_ID` and
 `FLUENTMAIL_OUTLOOK_AUTH_MODE` (`app_only`). Define them before plugins load and

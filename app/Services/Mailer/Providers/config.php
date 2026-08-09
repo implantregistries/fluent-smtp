@@ -215,15 +215,12 @@ return [
                 'sender_email'    => '',
                 'force_from_name' => 'no',
                 'return_path'     => 'yes',
-                'auth_mode'       => 'delegated',
                 'key_store'       => 'db',
-                'tenant_id'       => '',
                 'client_id'       => '',
                 'client_secret'   => '',
                 'auth_token'      => '',
                 'access_token'    => '',
-                'refresh_token'   => '',
-                'expire_stamp'    => 0
+                'refresh_token'   => ''
             ],
             'note'     => __('Gmail/Google Workspace is not recommended for sending mass marketing emails.', 'fluent-smtp')
         ],
@@ -237,12 +234,15 @@ return [
                 'sender_email'    => '',
                 'force_from_name' => 'no',
                 'return_path'     => 'yes',
+                'auth_mode'       => 'delegated',
                 'key_store'       => 'db',
+                'tenant_id'       => '',
                 'client_id'       => '',
                 'client_secret'   => '',
                 'auth_token'      => '',
                 'access_token'    => '',
-                'refresh_token'   => ''
+                'refresh_token'   => '',
+                'expire_stamp'    => 0
             ],
             'note'     => __('Outlook/Office365 is not recommended for sending mass marketing emails.', 'fluent-smtp')
         ],

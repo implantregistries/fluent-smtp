@@ -9,13 +9,17 @@
                 <el-radio-button label="app_only">{{ $t('Application credentials (app-only)') }}</el-radio-button>
             </el-radio-group>
             <p v-if="connection.auth_mode === 'app_only'">
-                {{ $t('Microsoft application authorization is configured externally. Exchange Online Application RBAC is recommended to scope mailbox access; this connector does not restrict tenant permissions.') }}
+                {{ $t('Create and authorize the Microsoft application in Microsoft 365, then enter its credentials below. Exchange Online Application RBAC is recommended to scope mailbox access; this connector does not restrict tenant permissions.') }}
             </p>
         </el-form-item>
         <el-radio-group size="mini" v-model="connection.key_store">
-            <el-radio-button value="db" label="db">{{ $t('Store Application Keys in DB') }}</el-radio-button>
+            <el-radio-button value="db" label="db">{{ $t('Store application credentials in FluentSMTP (encrypted)') }}</el-radio-button>
             <el-radio-button value="wp_config" label="wp_config">{{ $t('Application Keys in Config File') }}</el-radio-button>
         </el-radio-group>
+
+        <p v-if="connection.key_store == 'db' && connection.auth_mode === 'app_only'">
+            {{ $t('Enter the Microsoft application credentials below. FluentSMTP stores the client-secret value using its existing encrypted settings workflow.') }}
+        </p>
 
         <el-row :gutter="20" v-if="connection.key_store == 'db'">
             <el-col :md="12" :sm="24" v-if="connection.auth_mode === 'app_only'">

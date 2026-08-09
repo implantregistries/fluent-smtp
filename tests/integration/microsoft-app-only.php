@@ -40,11 +40,21 @@ return function () {
     };
 
     FsmtpTest::case('Outlook connections without an authentication mode remain delegated', function () {
+        $providers = require dirname(__DIR__, 2) . '/app/Services/Mailer/Providers/config.php';
+
         FsmtpTest::assertSame(
             OutlookHandler::AUTH_DELEGATED,
             OutlookHandler::getAuthMode(['provider' => 'outlook']),
             'legacy Outlook authentication mode'
         );
+        FsmtpTest::assertSame(
+            OutlookHandler::AUTH_DELEGATED,
+            $providers['outlook']['options']['auth_mode'],
+            'new Outlook connection authentication mode'
+        );
+        FsmtpTest::assertSame('db', $providers['outlook']['options']['key_store'], 'new Outlook key store');
+        FsmtpTest::assert(!isset($providers['gmail']['options']['auth_mode']), 'Outlook auth mode leaked into Gmail defaults');
+        FsmtpTest::assert(!isset($providers['gmail']['options']['tenant_id']), 'Outlook tenant ID leaked into Gmail defaults');
     });
 
     FsmtpTest::case('Outlook mode transitions discard incompatible token state', function () use ($validSettings) {
@@ -272,6 +282,56 @@ return function () {
             FsmtpTest::assert(isset($errors['tenant_id']), 'tenant ID validation error missing');
             FsmtpTest::assert(isset($errors['client_id']), 'client ID validation error missing');
             FsmtpTest::assert(isset($errors['sender_email']), 'sender validation error missing');
+        }
+    });
+
+    FsmtpTest::case('UI-managed app-only credentials use FluentSMTP encrypted settings storage', function () use ($validSettings) {
+        $original = get_option('fluentmail-settings', null);
+        $sender = 'ui-managed-' . FsmtpTest::uniq() . '@example.test';
+        $connectionKey = md5($sender);
+        $secret = 'obviously-fake-ui-managed-secret';
+        $provider = array_merge($validSettings($sender), [
+            'client_secret' => $secret,
+            'disable_encryption' => 'no',
+        ]);
+        $settings = [
+            'connections' => [
+                $connectionKey => [
+                    'title' => 'Suite UI-managed Outlook',
+                    'provider_settings' => $provider,
+                ],
+            ],
+            'mappings' => [$sender => $connectionKey],
+            'misc' => ['default_connection' => $connectionKey],
+        ];
+
+        try {
+            fluentMailSetSettings($settings);
+            $raw = get_option('fluentmail-settings');
+            $rawProvider = $raw['connections'][$connectionKey]['provider_settings'];
+
+            FsmtpTest::assertSame('db', $rawProvider['key_store'], 'UI-managed key store');
+            FsmtpTest::assertSame(OutlookHandler::AUTH_APP_ONLY, $rawProvider['auth_mode'], 'stored auth mode');
+            FsmtpTest::assert($rawProvider['client_secret'] !== $secret, 'client secret remained plaintext');
+            FsmtpTest::assert(
+                strpos(serialize($raw), $secret) === false,
+                'serialized FluentSMTP option leaked the client secret'
+            );
+
+            $decoded = fluentMailGetSettings([], false);
+            $decodedProvider = $decoded['connections'][$connectionKey]['provider_settings'];
+            FsmtpTest::assertSame($secret, $decodedProvider['client_secret'], 'decrypted UI-managed client secret');
+            FsmtpTest::assertSame($provider['tenant_id'], $decodedProvider['tenant_id'], 'stored tenant ID');
+            FsmtpTest::assertSame($provider['client_id'], $decodedProvider['client_id'], 'stored client ID');
+        } finally {
+            if ($original === null) {
+                delete_option('fluentmail-settings');
+            } else {
+                update_option('fluentmail-settings', $original);
+            }
+            wp_cache_delete('fluentmail-settings', 'options');
+            wp_cache_delete('alloptions', 'options');
+            fluentMailGetSettings([], false);
         }
     });
 
